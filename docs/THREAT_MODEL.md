@@ -1,43 +1,52 @@
-# Reality Firewall v3: Threat Model & Security Hardening
+# Reality Firewall v3: Modelo de Amenazas y Reforzamiento de Seguridad
 
-## 1. System Overview
-Reality Firewall v3 is an autonomous risk orchestration system designed to protect DeFi protocols from oracle manipulation, stale data, and liquidity attacks. It integrates Chainlink CRE for verifiable signals, x402 for micropayment-gated drills, and ERC-8004 for agent identity.
+## 1. Visión General del Sistema
 
-## 2. Threat Analysis
+Reality Firewall v3 es un sistema autónomo de orquestación de riesgos diseñado para proteger los protocolos DeFi de la manipulación de oráculos, datos obsoletos y ataques de liquidez. Integra Chainlink CRE para señales verificables, x402 para simulacros con micropagos y ERC-8004 para la identidad del agente.
 
-### 2.1 Oracle Manipulation
-- **Threat**: Attacker manipulates a DEX price to create a false divergence or hide a real one.
-- **Mitigation**: Reality Firewall compares Chainlink Data Feeds (primary) with multiple DEX sources (secondary) via CRE. The `RiskEngine` uses deterministic scoring to flag significant deviations.
+## 2. Análisis de Amenazas
 
-### 2.2 Stale Data Feeds
-- **Threat**: Data feeds stop updating during high volatility, leading to incorrect protocol actions.
-- **Mitigation**: CRE workflows check the `updatedAt` timestamp of feeds. The `RiskEngine` adds a staleness penalty to the risk score, triggering defensive actions like `FREEZE_MARKET` if data is too old.
+### 2.1 Manipulación de Oráculos
 
-### 2.3 Unauthorized Policy Execution
-- **Threat**: Malicious actor attempts to call `PolicyGuard.enforcePolicy` to freeze a market or change LTV.
-- **Mitigation**: 
-  - `PolicyGuard` requires a valid `evidenceHash` anchored in `ReceiptRegistry`.
-  - `ReceiptRegistry` only allows authorized `agentId` (ERC-8004) to anchor receipts.
-  - `PolicyGuard` implements **Blast Radius Limits**: LTV and Caps cannot be adjusted beyond pre-defined safety bounds, even with a valid receipt.
+La manipulación de oráculos representa una amenaza crítica donde un atacante podría alterar el precio de un DEX para generar una divergencia falsa o enmascarar una real. Para mitigar este riesgo, Reality Firewall compara los **Chainlink Data Feeds** (fuente primaria) con múltiples fuentes de DEX (fuentes secundarias) a través de **Chainlink Runtime Environment (CRE)**. El `RiskEngine` utiliza un sistema de puntuación determinista para identificar y señalar desviaciones significativas, asegurando la integridad de los datos de precios.
 
-### 2.4 Gateway Compromise
-- **Threat**: The Fastify Gateway is compromised, and the attacker tries to generate fake receipts.
-- **Mitigation**:
-  - Gateway uses `helmet`, `cors`, and `rate-limit` for basic hardening.
-  - Production deployment should use AWS KMS or a similar HSM for the `AGENT_PRIVATE_KEY`.
-  - All receipts are deterministic; any tampering with the JSON will result in a different `evidenceHash`, failing the on-chain verification.
+### 2.2 Feeds de Datos Obsoletos
 
-## 3. Security Hardening Checklist
+Los feeds de datos obsoletos, donde las actualizaciones se detienen durante períodos de alta volatilidad, pueden llevar a acciones incorrectas por parte del protocolo. Los flujos de trabajo de CRE están diseñados para verificar la marca de tiempo `updatedAt` de los feeds. El `RiskEngine` incorpora una penalización por obsolescencia en la puntuación de riesgo, lo que puede desencadenar acciones defensivas como `FREEZE_MARKET` si los datos se consideran demasiado antiguos para ser confiables.
 
-- [x] **Deterministic Hashing**: SHA256 of canonicalized JSON for verifiable receipts.
-- [x] **Blast Radius Control**: Hard limits in `PolicyGuard.sol`.
-- [x] **Agent Identity**: ERC-8004 compliant agent anchoring.
-- [x] **Micropayment Gating**: x402 prevents DoS on expensive risk drills.
-- [x] **Strict Types**: TypeScript strict mode across all modules.
-- [x] **No Build Hacks**: Clean CI/CD paths, no `ignoreBuildErrors`.
+### 2.3 Ejecución de Políticas No Autorizadas
 
-## 4. Auditability
-Every risk action is backed by a `Defense Receipt`. These receipts are:
-1. **Verifiable**: Anyone can re-run the `RiskEngine` logic with the same signals to get the same hash.
-2. **Immutable**: Anchored on-chain in `ReceiptRegistry`.
-3. **Attributable**: Signed/Anchored by a specific ERC-8004 Agent.
+Existe la amenaza de que un actor malicioso intente invocar `PolicyGuard.enforcePolicy` para congelar un mercado o modificar el LTV (Loan-to-Value) de manera indebida. Las mitigaciones implementadas son multifacéticas:
+
+- `PolicyGuard` exige un `evidenceHash` válido que debe estar anclado en el `ReceiptRegistry`.
+- El `ReceiptRegistry` solo permite que `agentId` autorizados (siguiendo el estándar ERC-8004) anclen recibos, garantizando la procedencia de las acciones.
+- `PolicyGuard` incorpora **Límites de Radio de Explosión (Blast Radius Limits)**, lo que significa que el LTV y los límites de capital no pueden ajustarse más allá de los límites de seguridad predefinidos, incluso si se presenta un recibo válido. Esto previene cambios catastróficos.
+
+### 2.4 Compromiso del Gateway
+
+Un compromiso del Gateway Fastify podría permitir a un atacante intentar generar recibos falsos. Para contrarrestar esto, se han implementado las siguientes medidas de seguridad:
+
+- El Gateway utiliza `helmet`, `cors` y `rate-limit` para un reforzamiento básico de la seguridad, protegiendo contra ataques comunes de la web.
+- En un entorno de producción, se recomienda encarecidamente el uso de **AWS KMS** o un HSM similar para proteger la `AGENT_PRIVATE_KEY`, asegurando que las claves críticas nunca se expongan directamente.
+- Todos los recibos son deterministas; cualquier alteración del JSON resultará en un `evidenceHash` diferente, lo que invalidará la verificación en cadena y frustrará los intentos de manipulación.
+
+## 3. Lista de Verificación de Reforzamiento de Seguridad
+
+La siguiente tabla resume las características clave de seguridad implementadas en Reality Firewall v3:
+
+| Característica de Seguridad       | Descripción                                                                                                                               |
+| :-------------------------------- | :---------------------------------------------------------------------------------------------------------------------------------------- |
+| **Hashing Determinista**          | Utiliza SHA256 del JSON canonizado para recibos verificables, asegurando la inmutabilidad y la integridad de la evidencia.                 |
+| **Control de Radio de Explosión** | Límites estrictos definidos en `PolicyGuard.sol` para prevenir cambios excesivos en los parámetros del protocolo, incluso con recibos válidos. |
+| **Identidad del Agente**          | Cumplimiento con ERC-8004 para el anclaje de la identidad del agente, proporcionando atribución criptográfica a todas las acciones.        |
+| **Gating por Micropagos (x402)**  | Implementación de x402 para requerir micropagos, previniendo ataques de denegación de servicio (DoS) en simulacros de riesgo costosos.   |
+| **Tipos Estrictos (TypeScript)**  | Uso de TypeScript en modo estricto en todos los módulos para minimizar errores en tiempo de ejecución y mejorar la robustez del código.     |
+| **Sin Hacks de Construcción**     | Rutas de CI/CD limpias y sin `ignoreBuildErrors`, garantizando un proceso de construcción seguro y auditable.                               |
+
+## 4. Auditabilidad
+
+Cada acción de riesgo en Reality Firewall v3 está respaldada por un **Recibo de Defensa**. Estos recibos poseen las siguientes propiedades fundamentales que garantizan la auditabilidad del sistema:
+
+1.  **Verificables**: Cualquier entidad puede volver a ejecutar la lógica del `RiskEngine` con las mismas señales para obtener el mismo hash, confirmando la validez del recibo.
+2.  **Inmutables**: Una vez generados, los recibos se anclan en la cadena de bloques a través del `ReceiptRegistry`, lo que garantiza su permanencia e inalterabilidad.
+3.  **Atribuibles**: Cada recibo está vinculado criptográficamente a un `Agent` específico que cumple con ERC-8004, proporcionando un rastro claro de responsabilidad.

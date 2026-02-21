@@ -1,0 +1,60 @@
+{
+  "name": "rfw-risk-workflow",
+  "version": "3.0.0",
+  "description": "Reality Firewall v3 — Oracle risk signal workflow. Fetches Chainlink Data Feed prices (EVM) + DEX prices (HTTP) with BFT consensus, then writes risk signal onchain.",
+  "entry": "./src/main.ts",
+  "settings": {
+    "staging-settings": {
+      "feeds": {
+        "WETH": "0x694AA1769357215DE4FAC081bf1f309aDC325306",
+        "WBTC": "0x1b44F3514812d835EB1BDB0acB33d3fA3351Ee43",
+        "LINK": "0xc59E3633BAAC79493d908e63626716e204a45EdF",
+        "USDC": "0xA2F78ab2355fe2f984D808B5CeE7FD0A93D5270E"
+      },
+      "rpcUrl": "https://ethereum-sepolia-rpc.publicnode.com",
+      "dexApiUrl": "https://api.coingecko.com/api/v3",
+      "consumerAddress": "0x0000000000000000000000000000000000000000"
+    },
+    "production-settings": {
+      "feeds": {
+        "WETH": "0x5f4eC3Df9cbd43714FE2740f5E3616155c5b8419",
+        "WBTC": "0xF4030086522a5bEEa4988F8cA5B36dbC97BeE88c",
+        "LINK": "0x2c1d072e956AFFC0D435Cb7AC38EF18d24d9127c"
+      },
+      "rpcUrl": "https://ethereum-rpc.publicnode.com",
+      "dexApiUrl": "https://api.coingecko.com/api/v3",
+      "consumerAddress": "DEPLOY_RISK_SIGNAL_CONSUMER_HERE"
+    }
+  },
+  "triggers": {
+    "cron": {
+      "description": "Runs every 5 minutes to monitor oracle health",
+      "schedule": "*/5 * * * *"
+    },
+    "http": {
+      "description": "On-demand trigger from the gateway API",
+      "method": "POST",
+      "bodySchema": {
+        "type": "object",
+        "properties": {
+          "asset":     { "type": "string", "enum": ["WETH", "WBTC", "LINK", "USDC", "ARB"] },
+          "requestId": { "type": "string" }
+        },
+        "required": ["asset"]
+      }
+    }
+  },
+  "capabilities": {
+    "http": { "allowedDomains": ["api.coingecko.com"] },
+    "evm": {
+      "networks": ["eip155:11155111"],
+      "operations": ["read", "write"]
+    }
+  },
+  "notes": {
+    "simulate":    "cre workflow simulate rfw-risk-workflow --target staging-settings",
+    "deploy":      "cre workflow deploy rfw-risk-workflow (requires CRE Early Access)",
+    "earlyAccess": "https://chain.link/chainlink-runtime-environment",
+    "sdk":         "npm install -g @chainlink/cre-cli && bun install"
+  }
+}

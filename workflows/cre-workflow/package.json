@@ -1,0 +1,19 @@
+{
+  "name": "rfw-risk-workflow",
+  "version": "3.0.0",
+  "description": "Reality Firewall v3 — Chainlink CRE Risk Workflow",
+  "scripts": {
+    "simulate": "bun run src/simulate-local.ts",
+    "simulate:drill": "IS_DRILL=true bun run src/simulate-local.ts",
+    "simulate:wbtc": "TARGET_ASSET=WBTC bun run src/simulate-local.ts",
+    "simulate:critical": "TARGET_ASSET=WETH IS_DRILL=true bun run src/simulate-local.ts",
+    "build": "bun build src/main.ts --target browser --outfile dist/workflow.js",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "typescript": "^5.4.5",
+    "bun-types": "^1.1.0"
+  },
+  "trustedDependencies": []
+}

@@ -1,0 +1,24 @@
+{
+  "name": "cre-risk-workflow",
+  "version": "3.0.0",
+  "description": "Reality Firewall v3 — Chainlink CRE Risk Workflow",
+  "scripts": {
+    "simulate": "cre workflow simulate rfw-risk-workflow --target staging-settings",
+    "deploy":   "cre workflow deploy rfw-risk-workflow",
+    "test":     "bun test"
+  },
+  "dependencies": {
+    "@chainlink/cre-sdk": "^0.1.0",
+    "zod": "^3.22.4"
+  },
+  "devDependencies": {
+    "bun-types": "latest",
+    "typescript": "^5.4.0"
+  },
+  "notes": {
+    "setup": "Install CRE CLI: npm install -g @chainlink/cre-cli",
+    "init":  "cre init (run once to scaffold the workflow project)",
+    "sim":   "bun install && bun run simulate",
+    "docs":  "https://docs.chain.link/chainlink-runtime-environment"
+  }
+}

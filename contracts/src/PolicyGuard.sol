@@ -2,16 +2,19 @@
 pragma solidity ^0.8.20;
 
 import "./interfaces/IReceiptRegistry.sol";
+import "@openzeppelin/contracts/access/AccessControl.sol";
+import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
 /**
  * @title PolicyGuard
  * @author Reality Firewall v3
- * @notice Deterministic risk-based policy enforcement.
- * @dev Enforces blast-radius limits on protocol parameter adjustments.
+ * @notice Deterministic risk-based policy enforcement with granular access control.
  */
-contract PolicyGuard {
+contract PolicyGuard is AccessControl, ReentrancyGuard {
+    bytes32 public constant EXECUTOR_ROLE = keccak256("EXECUTOR_ROLE");
+    bytes32 public constant ADMIN_ROLE = DEFAULT_ADMIN_ROLE;
+
     IReceiptRegistry public immutable registry;
-    address public owner;
 
     struct MarketPolicy {
         uint256 maxLtv;
@@ -19,10 +22,10 @@ contract PolicyGuard {
         uint256 maxCap;
         bool isFrozen;
         uint256 lastUpdate;
+        uint256 cooldown;
     }
 
     mapping(address => MarketPolicy) public policies;
-    mapping(address => bool) public authorizedExecutors;
 
     event PolicyUpdated(address indexed market, uint256 newLtv, uint256 newCap, bool frozen);
     event MarketInitialized(address indexed market, uint256 maxLtv, uint256 maxCap);
@@ -30,46 +33,33 @@ contract PolicyGuard {
     error UnauthorizedExecutor(address executor);
     error InvalidReceipt(bytes32 evidenceHash);
     error BlastRadiusExceeded(string param);
-    error OnlyOwner();
-
-    modifier onlyOwner() {
-        if (msg.sender != owner) revert OnlyOwner();
-        _;
-    }
-
-    modifier onlyExecutor() {
-        if (!authorizedExecutors[msg.sender]) revert UnauthorizedExecutor(msg.sender);
-        _;
-    }
+    error CooldownActive(address market);
 
     constructor(address _registry) {
         registry = IReceiptRegistry(_registry);
-        owner = msg.sender;
-        authorizedExecutors[msg.sender] = true;
+        _grantRole(ADMIN_ROLE, msg.sender);
+        _grantRole(EXECUTOR_ROLE, msg.sender);
     }
 
-    function setExecutor(address executor, bool status) external onlyOwner {
-        authorizedExecutors[executor] = status;
-    }
-
-    function initMarket(address market, uint256 maxLtv, uint256 maxCap) external onlyOwner {
+    function initMarket(
+        address market,
+        uint256 maxLtv,
+        uint256 maxCap,
+        uint256 cooldown
+    ) external onlyRole(ADMIN_ROLE) {
         policies[market] = MarketPolicy({
             maxLtv: maxLtv,
             minLtv: 0,
             maxCap: maxCap,
             isFrozen: false,
-            lastUpdate: block.timestamp
+            lastUpdate: block.timestamp,
+            cooldown: cooldown
         });
         emit MarketInitialized(market, maxLtv, maxCap);
     }
 
     /**
      * @notice Adjusts market parameters based on a verified defense receipt.
-     * @param market The target DeFi market address.
-     * @param evidenceHash The receipt hash to verify.
-     * @param newLtv Proposed new LTV.
-     * @param newCap Proposed new supply/borrow cap.
-     * @param freeze Whether to freeze the market.
      */
     function enforcePolicy(
         address market,
@@ -77,19 +67,20 @@ contract PolicyGuard {
         uint256 newLtv,
         uint256 newCap,
         bool freeze
-    ) external onlyExecutor {
-        // 1. Verify receipt exists and has sufficient score (e.g., >= 50)
-        if (!registry.verifyReceipt(evidenceHash, 50)) revert InvalidReceipt(evidenceHash);
-
+    ) external onlyRole(EXECUTOR_ROLE) nonReentrant {
         MarketPolicy storage policy = policies[market];
         
-        // 2. Blast Radius Check: LTV cannot exceed max defined
+        if (block.timestamp < policy.lastUpdate + policy.cooldown) {
+            revert CooldownActive(market);
+        }
+
+        // Verify receipt exists and has sufficient score (>= 50 for policy enforcement)
+        if (!registry.verifyReceipt(evidenceHash, 50)) revert InvalidReceipt(evidenceHash);
+
+        // Blast Radius Checks
         if (newLtv > policy.maxLtv) revert BlastRadiusExceeded("LTV");
-        
-        // 3. Blast Radius Check: Cap cannot exceed max defined
         if (newCap > policy.maxCap) revert BlastRadiusExceeded("CAP");
 
-        // 4. Apply changes
         policy.isFrozen = freeze;
         policy.lastUpdate = block.timestamp;
 

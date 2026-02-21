@@ -2,21 +2,30 @@
 pragma solidity ^0.8.20;
 
 import "./interfaces/IReceiptRegistry.sol";
+import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
+import "@openzeppelin/contracts/utils/cryptography/EIP712.sol";
 
 /**
  * @title ReceiptRegistry
  * @author Reality Firewall v3
- * @notice Deterministic anchoring of risk defense receipts.
- * @dev Implements ERC-8004 style agent identity anchoring.
+ * @notice Deterministic on-chain anchoring of DeFi risk Defense Receipts with EIP-712 signatures.
  */
-contract ReceiptRegistry is IReceiptRegistry {
-    mapping(bytes32 => Receipt) public receipts;
+contract ReceiptRegistry is IReceiptRegistry, EIP712 {
+    using ECDSA for bytes32;
+
+    mapping(bytes32 => Receipt) private _receipts;
     mapping(address => bool) public authorizedAgents;
     address public owner;
 
+    bytes32 private constant RECEIPT_TYPEHASH = keccak256(
+        "Receipt(bytes32 evidenceHash,bytes32 runIdHash,address agentId,uint8 score,uint8 level,bool isDrill)"
+    );
+
+    error OnlyOwner();
     error UnauthorizedAgent(address agent);
     error ReceiptAlreadyExists(bytes32 evidenceHash);
-    error OnlyOwner();
+    error InvalidSignature();
+    error ZeroAddress();
 
     modifier onlyOwner() {
         if (msg.sender != owner) revert OnlyOwner();
@@ -28,24 +37,16 @@ contract ReceiptRegistry is IReceiptRegistry {
         _;
     }
 
-    constructor() {
+    constructor() EIP712("RealityFirewall", "3.0.0") {
         owner = msg.sender;
         authorizedAgents[msg.sender] = true;
     }
 
     function setAuthorizedAgent(address agent, bool status) external onlyOwner {
+        if (agent == address(0)) revert ZeroAddress();
         authorizedAgents[agent] = status;
     }
 
-    /**
-     * @notice Anchors a defense receipt on-chain.
-     * @param evidenceHash SHA256 of the canonicalized receipt JSON.
-     * @param runIdHash Unique identifier for the risk run.
-     * @param agentId The ERC-8004 agent identity.
-     * @param score Risk score (0-100).
-     * @param level Risk level (0-4).
-     * @param isDrill Whether this was a paid drill (x402).
-     */
     function anchorReceipt(
         bytes32 evidenceHash,
         bytes32 runIdHash,
@@ -54,9 +55,49 @@ contract ReceiptRegistry is IReceiptRegistry {
         uint8 level,
         bool isDrill
     ) external onlyAuthorized returns (bool) {
-        if (receipts[evidenceHash].timestamp != 0) revert ReceiptAlreadyExists(evidenceHash);
+        return _anchor(evidenceHash, runIdHash, agentId, score, level, isDrill);
+    }
 
-        receipts[evidenceHash] = Receipt({
+    function anchorReceiptWithSignature(
+        bytes32 evidenceHash,
+        bytes32 runIdHash,
+        address agentId,
+        uint8 score,
+        uint8 level,
+        bool isDrill,
+        bytes calldata signature
+    ) external returns (bool) {
+        bytes32 structHash = keccak256(
+            abi.encode(
+                RECEIPT_TYPEHASH,
+                evidenceHash,
+                runIdHash,
+                agentId,
+                score,
+                level,
+                isDrill
+            )
+        );
+
+        bytes32 hash = _hashTypedDataV4(structHash);
+        address signer = hash.recover(signature);
+
+        if (!authorizedAgents[signer] || signer != agentId) revert InvalidSignature();
+
+        return _anchor(evidenceHash, runIdHash, agentId, score, level, isDrill);
+    }
+
+    function _anchor(
+        bytes32 evidenceHash,
+        bytes32 runIdHash,
+        address agentId,
+        uint8 score,
+        uint8 level,
+        bool isDrill
+    ) internal returns (bool) {
+        if (_receipts[evidenceHash].timestamp != 0) revert ReceiptAlreadyExists(evidenceHash);
+        
+        _receipts[evidenceHash] = Receipt({
             evidenceHash: evidenceHash,
             runIdHash: runIdHash,
             agentId: agentId,
@@ -66,16 +107,16 @@ contract ReceiptRegistry is IReceiptRegistry {
             timestamp: block.timestamp
         });
 
-        emit ReceiptAnchored(evidenceHash, runIdHash, agentId, score, level);
+        emit ReceiptAnchored(evidenceHash, runIdHash, agentId, score, level, isDrill);
         return true;
     }
 
     function getReceipt(bytes32 evidenceHash) external view returns (Receipt memory) {
-        return receipts[evidenceHash];
+        return _receipts[evidenceHash];
     }
 
     function verifyReceipt(bytes32 evidenceHash, uint8 minScore) external view returns (bool) {
-        Receipt memory r = receipts[evidenceHash];
+        Receipt memory r = _receipts[evidenceHash];
         return r.timestamp != 0 && r.score >= minScore;
     }
 }

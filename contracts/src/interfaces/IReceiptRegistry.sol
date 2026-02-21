@@ -17,7 +17,8 @@ interface IReceiptRegistry {
         bytes32 indexed runIdHash,
         address indexed agentId,
         uint8 score,
-        uint8 level
+        uint8 level,
+        bool isDrill
     );
 
     function anchorReceipt(
@@ -27,6 +28,16 @@ interface IReceiptRegistry {
         uint8 score,
         uint8 level,
         bool isDrill
+    ) external returns (bool);
+
+    function anchorReceiptWithSignature(
+        bytes32 evidenceHash,
+        bytes32 runIdHash,
+        address agentId,
+        uint8 score,
+        uint8 level,
+        bool isDrill,
+        bytes calldata signature
     ) external returns (bool);
 
     function getReceipt(bytes32 evidenceHash) external view returns (Receipt memory);

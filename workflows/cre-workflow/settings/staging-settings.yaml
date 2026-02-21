@@ -1,0 +1,49 @@
+# Reality Firewall v3 — CRE Workflow Settings
+# Used by: cre workflow simulate rfw-risk-workflow --target staging-settings
+#
+# Reference: https://docs.chain.link/cre/workflow/simulation
+
+name: rfw-risk-workflow
+version: "3.0.0"
+
+# Workflow trigger: HTTP webhook OR cron every 5 min
+triggers:
+  - type: cron
+    schedule: "*/5 * * * *"
+  - type: http
+    path: /trigger/risk-check
+
+# EVM capabilities — Sepolia reads + writes
+capabilities:
+  evm:
+    - chainId: "eip155:11155111"
+      rpcUrl: "${SEPOLIA_RPC_URL}"
+      actions:
+        - read    # latestRoundData from Chainlink Data Feeds
+        - write   # anchorReceipt on ReceiptRegistry
+
+  # HTTP offchain — CoinGecko + Claude AI
+  http:
+    allowedDomains:
+      - "api.coingecko.com"
+      - "api.anthropic.com"
+
+# Environment variables (non-secret)
+env:
+  TARGET_ASSET: "WETH"
+  IS_DRILL: "false"
+  AGENT_ADDRESS: "${AGENT_ADDRESS}"
+  RECEIPT_REGISTRY_ADDRESS: "${RECEIPT_REGISTRY_ADDRESS}"
+
+# Secrets (injected by CRE DON, never logged)
+secrets:
+  - ANTHROPIC_API_KEY
+  - ANCHOR_PRIVATE_KEY
+
+# Staging environment overrides
+staging-settings:
+  env:
+    TARGET_ASSET: "WETH"
+    IS_DRILL: "true"
+  # Staging uses simulation fallbacks when RPC is unavailable
+  fallback: true
